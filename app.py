@@ -1,5 +1,5 @@
 from flask import Flask, request, jsonify
-import anthropic
+import google.generativeai as genai
 import os
 
 app = Flask(__name__)
@@ -138,26 +138,26 @@ def translate():
     if not source_text or not source_text.strip():
         return jsonify({"translatedText": ""}), 200
 
-    api_key = os.environ.get("ANTHROPIC_API_KEY")
+    api_key = os.environ.get("GEMINI_API_KEY")
     if not api_key:
-        return jsonify({"error": "ANTHROPIC_API_KEY not set"}), 500
+        return jsonify({"error": "GEMINI_API_KEY not set"}), 500
 
-    client = anthropic.Anthropic(api_key=api_key)
-    
-    message = client.messages.create(
-        model="claude-3-5-sonnet-20241022",
-        max_tokens=1024,
-        system=STYLE_GUIDE,
-        messages=[
-            {"role": "user", "content": f"Translate this to Turkish:\n\n{source_text}"}
-        ]
-    )
-    
-    translated = message.content[0].text.strip()
-    
-    # LibreTranslate-compatible response format (what Phrase expects)
-    return jsonify({"translatedText": translated})
-
+    try:
+        genai.configure(api_key=api_key)
+        
+        # Gemini modelini system instruction (sistem komutu) ile başlatıyoruz
+        model = genai.GenerativeModel(
+            model_name="gemini-1.5-flash",
+            system_instruction=STYLE_GUIDE
+        )
+        
+        response = model.generate_content(f"Translate this to Turkish:\n\n{source_text}")
+        translated = response.text.strip()
+        
+        return jsonify({"translatedText": translated})
+    except Exception as e:
+        print(f"Translation Error: {str(e)}")
+        return jsonify({"error": "Internal translation error"}), 500
 
 @app.route("/languages", methods=["GET"])
 def languages():
@@ -166,11 +166,9 @@ def languages():
         {"code": "tr", "name": "Turkish"}
     ])
 
-
 @app.route("/", methods=["GET"])
 def health():
-    return jsonify({"status": "ok", "service": "DoubleCMD MT - TR48A"})
-
+    return jsonify({"status": "ok", "service": "DoubleCMD MT - TR48A (Gemini)"})
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
