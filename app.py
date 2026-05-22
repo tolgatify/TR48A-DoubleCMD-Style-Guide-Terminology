@@ -173,4 +173,28 @@ def health():
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port)
+    app.run(host="0.0.0.0"
+            , port=port)
+
+
+@app.route("/", methods=["GET"])
+def health():
+    api_key = os.environ.get("GEMINI_API_KEY")
+    if not api_key:
+        return jsonify({"status": "error", "message": "GEMINI_API_KEY eksik!"})
+    
+    try:
+        genai.configure(api_key=api_key)
+        # Senin API anahtarının erişebildiği ve metin üretebilen tüm modelleri listeliyoruz
+        available_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
+        
+        return jsonify({
+            "status": "ok", 
+            "service": "DoubleCMD MT - TR48A",
+            "your_allowed_models": available_models
+        })
+    except Exception as e:
+        return jsonify({"status": "error", "details": str(e)})
+
+
+
