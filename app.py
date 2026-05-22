@@ -146,8 +146,9 @@ def translate():
         genai.configure(api_key=api_key)
         
         # Gemini modelini system instruction (sistem komutu) ile başlatıyoruz
+        # Gemini modelini system instruction (sistem komutu) ile başlatıyoruz
         model = genai.GenerativeModel(
-            model_name="gemini-1.5-flash",
+            model_name="gemini-1.5-flash-latest",
             system_instruction=STYLE_GUIDE
         )
         
