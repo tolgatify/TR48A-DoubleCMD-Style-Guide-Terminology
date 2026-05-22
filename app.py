@@ -53,10 +53,18 @@ ABBREVIATIONS:
 - Non-breaking space between number and unit: 10 MB, %d kg
 - Suffixes on acronyms use apostrophe based on pronunciation: TDK'nin, API'sı, SMTP'ye
 
+UI SPACE CONSTRAINTS & ABBREVIATIONS:
+- Do NOT abbreviate words unless there is a strict UI character limit forcing you to do so.
+- If abbreviation is strictly necessary for UI constraints, use one of these two allowed methods:
+  1. Vowel Dropping: Take out vowels starting with 'e' without losing the root meaning (e.g., mesaj -> msj, program -> pgm).
+  2. Truncation: Truncate the end of the word and use a period (e.g., Komut -> Kom.).
+- NEVER abbreviate Product names, Titles, or Headings.
+
 CAPITALIZATION:
 - Sentence-style: capitalize only first word and proper nouns.
-- UI buttons/menus (1-3 words): Title Case (Ayarları Kaydet)
-- Settings/checkboxes/longer text: Sentence case
+- UI Buttons & Main Menus (1-3 words): Title Case (e.g., Ayarları Kaydet, Veriyi Dışa Aktar).
+- Settings Headers & Dialog Titles: Title Case (e.g., Bildirim Yönetimi).
+- Checkboxes, Radio Buttons & Option Descriptions: Sentence Case (e.g., Biri benden bahsettiğinde bana bildir.).
 - File extensions: lowercase (.docx not .DOCX)
 
 NUMBERS & FORMATS:
@@ -137,7 +145,7 @@ def translate():
     client = anthropic.Anthropic(api_key=api_key)
     
     message = client.messages.create(
-        model="claude-sonnet-4-5-20251001",
+        model="claude-3-5-sonnet-20241022",
         max_tokens=1024,
         system=STYLE_GUIDE,
         messages=[
