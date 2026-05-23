@@ -156,6 +156,43 @@ except Exception as e:
 FULL_INSTRUCTION = STYLE_GUIDE + TERM_TEXT
 
 @app.route("/translate", methods=["POST"])
+@app.route("/phrase-mt", methods=["POST"])
+def phrase_mt():
+    data = request.get_json()
+    
+    # Phrase TMS, çevrilecek segmentleri 'texts' adında bir liste olarak gönderir
+    texts = data.get("texts", [])
+    if not texts:
+        return jsonify({"translations": []}), 200
+
+    api_key = os.environ.get("GEMINI_API_KEY")
+    if not api_key:
+        return jsonify({"error": "GEMINI_API_KEY eksik"}), 500
+
+    translations = []
+    try:
+        genai.configure(api_key=api_key)
+        model = genai.GenerativeModel(
+            model_name="gemini-2.5-flash",
+            system_instruction=FULL_INSTRUCTION
+        )
+        
+        # Phrase'in gönderdiği her bir segmenti sırayla çeviriyoruz
+        for text in texts:
+            if not text.strip():
+                translations.append("")
+                continue
+                
+            response = model.generate_content(f"Translate this to Turkish:\n\n{text}")
+            translations.append(response.text.strip())
+            
+        # Phrase TMS, yanıtı 'translations' listesi olarak geri bekler
+        return jsonify({"translations": translations})
+        
+    except Exception as e:
+        print(f"Phrase MT Error: {str(e)}")
+        # Phrase'in çökmemesi için hata durumunda boş veya standart bir format dönüyoruz
+        return jsonify({"error": str(e)}), 500
 def translate():
     data = request.get_json()
     
