@@ -1,6 +1,7 @@
 from flask import Flask, request, jsonify
 import google.generativeai as genai
 import os
+import openpyxl
 
 app = Flask(__name__)
 
@@ -126,6 +127,34 @@ Backspace→Geri Al, Tab→Sekme, Spacebar→Ara çubuğu, Up Arrow→Yukarı Ok
 - Preserve any formatting tags if present.
 """
 
+# --- Terminolojiyi Sunucu Başlarken Hafızaya Alıyoruz ---
+TERM_TEXT = ""
+try:
+    if os.path.exists("termbase mergan.xlsx"):
+        wb = openpyxl.load_workbook("termbase mergan.xlsx", data_only=True)
+        sheet = wb.active
+        lines = []
+        
+        # min_row=2 diyerek başlık satırını atlıyoruz
+        for row in sheet.iter_rows(min_row=2, values_only=True):
+            en_term = str(row[0]).strip() if row[0] is not None else ""
+            tr_term = str(row[1]).strip() if row[1] is not None else ""
+            
+            # Sadece hem İngilizcesi hem Türkçesi olan satırları ekliyoruz
+            if en_term and tr_term:
+                lines.append(f"{en_term} -> {tr_term}")
+        
+        if lines:
+            TERM_TEXT = "\n\n=== DOUBLECMD TERMINOLOGY GLOSSARY ===\n"
+            TERM_TEXT += "Aşağıdaki terimleri her zaman sağ tarafında belirtilen Türkçe karşılıklarıyla çevir:\n\n"
+            TERM_TEXT += "\n".join(lines)
+            print(f"BAŞARILI: {len(lines)} terim Excel'den okundu ve eklendi.")
+except Exception as e:
+    print(f"Terminoloji Excel'den okunamadı: {str(e)}")
+
+# Yapay zekaya gönderilecek nihai talimat (Stil Rehberi + Terminoloji)
+FULL_INSTRUCTION = STYLE_GUIDE + TERM_TEXT
+
 @app.route("/translate", methods=["POST"])
 def translate():
     data = request.get_json()
@@ -145,10 +174,9 @@ def translate():
     try:
         genai.configure(api_key=api_key)
         
- # Gemini modelini system instruction (sistem komutu) ile başlatıyoruz
         model = genai.GenerativeModel(
             model_name="gemini-2.5-flash",
-            system_instruction=STYLE_GUIDE
+            system_instruction=FULL_INSTRUCTION
         )
         
         response = model.generate_content(f"Translate this to Turkish:\n\n{source_text}")
@@ -168,25 +196,8 @@ def languages():
 
 @app.route("/", methods=["GET"])
 def health():
-    api_key = os.environ.get("GEMINI_API_KEY")
-    if not api_key:
-        return jsonify({"status": "error", "message": "GEMINI_API_KEY eksik!"})
-    
-    try:
-        genai.configure(api_key=api_key)
-        # Senin API anahtarının erişebildiği ve metin üretebilen tüm modelleri listeliyoruz
-        available_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
-        
-        return jsonify({
-            "status": "ok", 
-            "service": "DoubleCMD MT - TR48A",
-            "your_allowed_models": available_models
-        })
-    except Exception as e:
-        return jsonify({"status": "error", "details": str(e)})
+    return jsonify({"status": "ok", "service": "DoubleCMD MT - TR48A (Gemini 2.5 Flash + Termbase)"})
 
-
-
-
-
-
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
