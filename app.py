@@ -163,11 +163,10 @@ def translate():
         return jsonify({"error": "GEMINI_API_KEY eksik"}), 500
 
     try:
-        # BURASI EKSİKTİ EKLENDİ VE HİZALANDI
         genai.configure(api_key=api_key)
         
-model = genai.GenerativeModel(
-            model_name="gemini-3.5-flash", # Eski 1.5 sürümü yerine güncel model
+        model = genai.GenerativeModel(
+            model_name="gemini-1.5-flash", # Google 3.5'i yaygın kütüphanede tanımayabiliyor, garanti olsun diye stabil 1.5'e çektim.
             system_instruction=FULL_INSTRUCTION
         )
         response = model.generate_content(f"Translate this to Turkish:\n\n{source_text}")
@@ -189,11 +188,10 @@ def phrase_mt():
 
     translations = []
     try:
-        # HİZALAMA DÜZELTİLDİ
         genai.configure(api_key=api_key)
         
-      model = genai.GenerativeModel(
-            model_name="gemini-3.5-flash", # Eski 1.5 sürümü yerine güncel model
+        model = genai.GenerativeModel(
+            model_name="gemini-1.5-flash", # Burayı da stabil sürüme sabitledik.
             system_instruction=FULL_INSTRUCTION
         )
         
