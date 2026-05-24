@@ -166,8 +166,8 @@ def translate():
         # BURASI EKSİKTİ EKLENDİ VE HİZALANDI
         genai.configure(api_key=api_key)
         
-        model = genai.GenerativeModel(
-            model_name="gemini-1.5-flash-latest",
+model = genai.GenerativeModel(
+            model_name="gemini-3.5-flash", # Eski 1.5 sürümü yerine güncel model
             system_instruction=FULL_INSTRUCTION
         )
         response = model.generate_content(f"Translate this to Turkish:\n\n{source_text}")
@@ -192,8 +192,8 @@ def phrase_mt():
         # HİZALAMA DÜZELTİLDİ
         genai.configure(api_key=api_key)
         
-        model = genai.GenerativeModel(
-            model_name="gemini-1.5-flash-latest",
+      model = genai.GenerativeModel(
+            model_name="gemini-3.5-flash", # Eski 1.5 sürümü yerine güncel model
             system_instruction=FULL_INSTRUCTION
         )
         
