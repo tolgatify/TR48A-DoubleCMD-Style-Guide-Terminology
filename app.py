@@ -165,11 +165,13 @@ def translate():
     try:
         genai.configure(api_key=api_key)
         
-        model = genai.GenerativeModel(
-            model_name="gemini-1.5-flash", # Google 3.5'i yaygın kütüphanede tanımayabiliyor, garanti olsun diye stabil 1.5'e çektim.
-            system_instruction=FULL_INSTRUCTION
-        )
-        response = model.generate_content(f"Translate this to Turkish:\n\n{source_text}")
+        # En stabil evrensel model
+        model = genai.GenerativeModel("gemini-pro")
+        
+        # Talimatları doğrudan promptun içine gömdük, böylece API çökmez
+        prompt = f"{FULL_INSTRUCTION}\n\nLütfen aşağıdaki metni kurallara uyarak Türkçeye çevir:\n\n{source_text}"
+        
+        response = model.generate_content(prompt)
         return jsonify({"translatedText": response.text.strip()})
     except Exception as e:
         print(f"Translation Error: {str(e)}")
@@ -190,17 +192,20 @@ def phrase_mt():
     try:
         genai.configure(api_key=api_key)
         
-        model = genai.GenerativeModel(
-            model_name="gemini-1.5-flash", # Burayı da stabil sürüme sabitledik.
-            system_instruction=FULL_INSTRUCTION
-        )
+        # En stabil evrensel model
+        model = genai.GenerativeModel("gemini-pro")
         
         for text in texts:
             if not text.strip():
                 translations.append("")
                 continue
-            response = model.generate_content(f"Translate this to Turkish:\n\n{text}")
+            
+            # Talimatları doğrudan promptun içine gömdük
+            prompt = f"{FULL_INSTRUCTION}\n\nLütfen aşağıdaki metni kurallara uyarak Türkçeye çevir:\n\n{text}"
+            
+            response = model.generate_content(prompt)
             translations.append(response.text.strip())
+            
         return jsonify({"translations": translations})
     except Exception as e:
         print(f"Phrase MT Error: {str(e)}")
