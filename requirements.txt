@@ -1,4 +1,1 @@
-Flask
-openpyxl
-google-generativeai>=0.5.4
-
+flask
