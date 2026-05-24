@@ -163,8 +163,8 @@ def translate():
         return jsonify({"error": "GEMINI_API_KEY eksik"}), 500
 
     try:
-        model = genai.GenerativeModel(
-    model_name="gemini-1.5-flash", 
+ model = genai.GenerativeModel(
+    model_name="gemini-1.5-flash-latest", # Sadece sonuna "-latest" ekledik
     system_instruction=FULL_INSTRUCTION
 )
         response = model.generate_content(f"Translate this to Turkish:\n\n{source_text}")
@@ -187,10 +187,10 @@ def phrase_mt():
     translations = []
     try:
         genai.configure(api_key=api_key)
-        model = genai.GenerativeModel(
-            model_name="gemini-2.5-flash",
-            system_instruction=FULL_INSTRUCTION
-        )
+       model = genai.GenerativeModel(
+    model_name="gemini-1.5-flash-latest", # Sadece sonuna "-latest" ekledik
+    system_instruction=FULL_INSTRUCTION
+)
         for text in texts:
             if not text.strip():
                 translations.append("")
