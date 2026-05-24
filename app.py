@@ -163,11 +163,10 @@ def translate():
         return jsonify({"error": "GEMINI_API_KEY eksik"}), 500
 
     try:
-        genai.configure(api_key=api_key)
         model = genai.GenerativeModel(
-            model_name="gemini-2.5-flash",
-            system_instruction=FULL_INSTRUCTION
-        )
+    model_name="gemini-1.5-flash", 
+    system_instruction=FULL_INSTRUCTION
+)
         response = model.generate_content(f"Translate this to Turkish:\n\n{source_text}")
         return jsonify({"translatedText": response.text.strip()})
     except Exception as e:
