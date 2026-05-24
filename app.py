@@ -149,12 +149,13 @@ except Exception as e:
 
 FULL_INSTRUCTION = STYLE_GUIDE + TERM_TEXT
 
+
 def get_model():
-    import vertexai
-    from vertexai.generative_models import GenerativeModel
-    project = os.environ.get("GOOGLE_CLOUD_PROJECT")
-    vertexai.init(project=project, location="us-central1")
-    return GenerativeModel("gemini-2.0-flash")
+    api_key = os.environ.get("GEMINI_API_KEY")
+    if not api_key:
+        raise ValueError("GEMINI_API_KEY eksik")
+    genai.configure(api_key=api_key)
+    return genai.GenerativeModel("gemini-2.0-flash")
 
 
 @app.route("/translate", methods=["POST"])
