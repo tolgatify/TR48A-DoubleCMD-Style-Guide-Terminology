@@ -1,7 +1,7 @@
 from flask import Flask, request, jsonify
-import google.generativeai as genai
 import os
 import openpyxl
+import google.generativeai as genai
 
 app = Flask(__name__)
 
@@ -127,40 +127,56 @@ Backspace→Geri Al, Tab→Sekme, Spacebar→Ara çubuğu, Up Arrow→Yukarı Ok
 - Preserve any formatting tags if present.
 """
 
-# --- Terminolojiyi Sunucu Başlarken Hafızaya Alıyoruz ---
 TERM_TEXT = ""
 try:
     if os.path.exists("termbase mergan.xlsx"):
         wb = openpyxl.load_workbook("termbase mergan.xlsx", data_only=True)
         sheet = wb.active
         lines = []
-        
-        # min_row=2 diyerek başlık satırını atlıyoruz
         for row in sheet.iter_rows(min_row=2, values_only=True):
             en_term = str(row[0]).strip() if row[0] is not None else ""
             tr_term = str(row[1]).strip() if row[1] is not None else ""
-            
-            # Sadece hem İngilizcesi hem Türkçesi olan satırları ekliyoruz
             if en_term and tr_term:
                 lines.append(f"{en_term} -> {tr_term}")
-        
         if lines:
             TERM_TEXT = "\n\n=== DOUBLECMD TERMINOLOGY GLOSSARY ===\n"
             TERM_TEXT += "Aşağıdaki terimleri her zaman sağ tarafında belirtilen Türkçe karşılıklarıyla çevir:\n\n"
             TERM_TEXT += "\n".join(lines)
-            print(f"BAŞARILI: {len(lines)} terim Excel'den okundu ve eklendi.")
+            print(f"BAŞARILI: {len(lines)} terim Excel'den okundu.")
 except Exception as e:
     print(f"Terminoloji Excel'den okunamadı: {str(e)}")
 
-# Yapay zekaya gönderilecek nihai talimat (Stil Rehberi + Terminoloji)
 FULL_INSTRUCTION = STYLE_GUIDE + TERM_TEXT
 
 @app.route("/translate", methods=["POST"])
+def translate():
+    data = request.get_json()
+    if not data or "q" not in data:
+        return jsonify({"error": "Missing 'q' field"}), 400
+    
+    source_text = data["q"]
+    if not source_text or not source_text.strip():
+        return jsonify({"translatedText": ""}), 200
+
+    api_key = os.environ.get("GEMINI_API_KEY")
+    if not api_key:
+        return jsonify({"error": "GEMINI_API_KEY eksik"}), 500
+
+    try:
+        genai.configure(api_key=api_key)
+        model = genai.GenerativeModel(
+            model_name="gemini-2.5-flash",
+            system_instruction=FULL_INSTRUCTION
+        )
+        response = model.generate_content(f"Translate this to Turkish:\n\n{source_text}")
+        return jsonify({"translatedText": response.text.strip()})
+    except Exception as e:
+        print(f"Translation Error: {str(e)}")
+        return jsonify({"error": "Internal translation error"}), 500
+
 @app.route("/phrase-mt", methods=["POST"])
 def phrase_mt():
     data = request.get_json()
-    
-    # Phrase TMS, çevrilecek segmentleri 'texts' adında bir liste olarak gönderir
     texts = data.get("texts", [])
     if not texts:
         return jsonify({"translations": []}), 200
@@ -176,64 +192,24 @@ def phrase_mt():
             model_name="gemini-2.5-flash",
             system_instruction=FULL_INSTRUCTION
         )
-        
-        # Phrase'in gönderdiği her bir segmenti sırayla çeviriyoruz
         for text in texts:
             if not text.strip():
                 translations.append("")
                 continue
-                
             response = model.generate_content(f"Translate this to Turkish:\n\n{text}")
             translations.append(response.text.strip())
-            
-        # Phrase TMS, yanıtı 'translations' listesi olarak geri bekler
         return jsonify({"translations": translations})
-        
     except Exception as e:
         print(f"Phrase MT Error: {str(e)}")
-        # Phrase'in çökmemesi için hata durumunda boş veya standart bir format dönüyoruz
         return jsonify({"error": str(e)}), 500
-def translate():
-    data = request.get_json()
-    
-    if not data or "q" not in data:
-        return jsonify({"error": "Missing 'q' field"}), 400
-    
-    source_text = data["q"]
-    
-    if not source_text or not source_text.strip():
-        return jsonify({"translatedText": ""}), 200
-
-    api_key = os.environ.get("GEMINI_API_KEY")
-    if not api_key:
-        return jsonify({"error": "GEMINI_API_KEY not set"}), 500
-
-    try:
-        genai.configure(api_key=api_key)
-        
-        model = genai.GenerativeModel(
-            model_name="gemini-2.5-flash",
-            system_instruction=FULL_INSTRUCTION
-        )
-        
-        response = model.generate_content(f"Translate this to Turkish:\n\n{source_text}")
-        translated = response.text.strip()
-        
-        return jsonify({"translatedText": translated})
-    except Exception as e:
-        print(f"Translation Error: {str(e)}")
-        return jsonify({"error": "Internal translation error"}), 500
 
 @app.route("/languages", methods=["GET"])
 def languages():
-    return jsonify([
-        {"code": "en", "name": "English"},
-        {"code": "tr", "name": "Turkish"}
-    ])
+    return jsonify([{"code": "en", "name": "English"}, {"code": "tr", "name": "Turkish"}])
 
 @app.route("/", methods=["GET"])
 def health():
-    return jsonify({"status": "ok", "service": "DoubleCMD MT - TR48A (Gemini 2.5 Flash + Termbase)"})
+    return jsonify({"status": "ok", "service": "DoubleCMD MT - GCP Connection Verified"})
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
