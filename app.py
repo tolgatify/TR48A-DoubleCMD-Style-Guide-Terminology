@@ -1,10 +1,10 @@
 from flask import Flask, request, jsonify
 import os
-import openpyxl
-import google.generativeai as genai
+import anthropic
 
 app = Flask(__name__)
 
+# ── Style Guide ────────────────────────────────────────────────────────────────
 STYLE_GUIDE = """
 You are a professional Turkish localization specialist for DoubleCMD, a file manager application.
 Translate the given English text into Turkish following ALL of the rules below strictly.
@@ -46,24 +46,22 @@ Words/phrases to AVOID → USE INSTEAD:
 - Use "o" or restructure to avoid gendered pronouns.
 - Use "engelli birey" not "özürlü"; "işitme güçlüğü çeken" not "sağır"
 - Use "Seçin" not "Tıklayın" for accessibility (applies to all input methods)
+- Use "kişi" or "kişiler" for neutral references.
 
 === GRAMMAR RULES ===
+
 ABBREVIATIONS:
 - Acronyms: uppercase, no periods between letters (TDK not T.D.K.), except T.C.
 - Storage units always capitalized: KB, MB, GB, TB
 - Non-breaking space between number and unit: 10 MB, %d kg
 - Suffixes on acronyms use apostrophe based on pronunciation: TDK'nin, API'sı, SMTP'ye
-
-UI SPACE CONSTRAINTS & ABBREVIATIONS:
-- Do NOT abbreviate words unless there is a strict UI character limit forcing you to do so.
-- If abbreviation is strictly necessary for UI constraints, use one of these two allowed methods:
-  1. Vowel Dropping: Take out vowels starting with 'e' without losing the root meaning (e.g., mesaj -> msj, program -> pgm).
-  2. Truncation: Truncate the end of the word and use a period (e.g., Komut -> Kom.).
-- NEVER abbreviate Product names, Titles, or Headings.
+- Do NOT abbreviate words unless strict UI character limit forces it.
+- If abbreviation is necessary: Vowel Dropping (mesaj → msj) or Truncation with period (Komut → Kom.)
+- NEVER abbreviate product names, titles, or headings.
 
 CAPITALIZATION:
 - Sentence-style: capitalize only first word and proper nouns.
-- UI Buttons & Main Menus (1-3 words): Title Case (e.g., Ayarları Kaydet, Veriyi Dışa Aktar).
+- UI Buttons & Main Menus (1–3 words): Title Case (e.g., Ayarları Kaydet, Veriyi Dışa Aktar).
 - Settings Headers & Dialog Titles: Title Case (e.g., Bildirim Yönetimi).
 - Checkboxes, Radio Buttons & Option Descriptions: Sentence Case (e.g., Biri benden bahsettiğinde bana bildir.).
 - File extensions: lowercase (.docx not .DOCX)
@@ -73,7 +71,7 @@ NUMBERS & FORMATS:
 - Date: DD.MM.YYYY (25.05.2026)
 - Time: 24-hour (14:30)
 - Percent: %100 (sign before number, no space)
-- Currency: 1.250TL (no space)
+- Currency: 1.250TL (no space between number and TL)
 
 PUNCTUATION:
 - Buttons/menu items: NO period at end (Kaydet, not Kaydet.)
@@ -82,6 +80,7 @@ PUNCTUATION:
 - Exclamation (!): only for critical warnings, very sparingly.
 - No comma before/after ve, veya, ya da.
 - Do not use "ki" to connect clauses.
+- Do not start standalone UI strings with conjunctions.
 
 NOUNS:
 - After a number/placeholder: always singular (3 dosya silindi, NOT 3 dosyalar silindi)
@@ -94,19 +93,21 @@ VERBS:
 - Progress/loading: use -yor suffix (Yükleniyor..., Eşitleniyor...)
 - Error messages: use passive/neutral (Şifre hatalı. NOT Yanlış şifre girdiniz.)
 
+GENITIVE:
+- Menu items/UI labels: Undefined Noun Phrase (Dosya Özellikleri NOT Dosyanın Özellikleri)
+- Apostrophe for proper nouns with suffixes: Windows'un (with suffix needs apostrophe), but Windows klasörü (no apostrophe without suffix)
+- Avoid long nested genitive chains.
+
 CONJUNCTIONS:
 - Do not start standalone UI strings with conjunctions.
 - "and/or" → ve/veya
 - Avoid "ki" conjunction.
 
-GENITIVE:
-- Menu items/UI labels: Undefined Noun Phrase (Dosya Özellikleri NOT Dosyanın Özellikleri)
-- Apostrophe for proper nouns: Windows klasörü (no apostrophe) but Windows'un (with suffix needs apostrophe)
-
 PLACEHOLDERS:
-- Keep placeholder order (%s, %d) as in source unless Turkish grammar requires reordering.
+- Keep placeholder order (%s, %d, %1, %2) as in source unless Turkish grammar requires reordering.
 - NEVER attach suffixes to placeholders: "%s silinemiyor" NOT "%s'i silinemiyor"
 - Percent with placeholder: %%%d (sign before number)
+- Placeholders with numbers: noun always singular (%d dosya, not %d dosyalar)
 
 === ERROR MESSAGES ===
 - Sound natural, empathetic, human — not robotic.
@@ -115,10 +116,14 @@ PLACEHOLDERS:
 - "Failed to": → yapılamadı (passive)
 - "Cannot find": → bulunamıyor / bulunamadı (passive)
 - "Insufficient memory": → Bellek yetersiz / Bellek yeterli değil
+- Use passive/neutral voice, never blame the user.
+- Restructure sentence to follow logical chronological order of events.
 
-=== KEY NAMES (keep as-is or translate as specified) ===
-Backspace→Geri Al, Tab→Sekme, Spacebar→Ara çubuğu, Up Arrow→Yukarı Ok, Down Arrow→Aşağı Ok, Left Arrow→Sol Ok, Right Arrow→Sağ Ok, Ctrl→Control, Windows key→Windows tuşu, Menu key→Menü tuşu
-(All others: Alt, Enter, Esc, Delete, Insert, Home, End, Shift, Pause, etc. stay in English)
+=== KEY NAMES ===
+Backspace→Geri Al, Tab→Sekme, Spacebar→Ara çubuğu, Up Arrow→Yukarı Ok,
+Down Arrow→Aşağı Ok, Left Arrow→Sol Ok, Right Arrow→Sağ Ok,
+Ctrl→Control, Windows key→Windows tuşu, Menu key→Menü tuşu
+(All others stay in English: Alt, Enter, Esc, Delete, Insert, Home, End, Shift, Pause, etc.)
 
 === OUTPUT RULES ===
 - Return ONLY the Turkish translation. No explanations, no notes, no alternatives.
@@ -127,37 +132,81 @@ Backspace→Geri Al, Tab→Sekme, Spacebar→Ara çubuğu, Up Arrow→Yukarı Ok
 - Preserve any formatting tags if present.
 """
 
-# Termbase Excel'den oku
+# ── Terminology: GitHub raw dosyasından veya local Excel'den yükle ──────────
 TERM_TEXT = ""
-try:
-    if os.path.exists("termbase mergan.xlsx"):
-        wb = openpyxl.load_workbook("termbase mergan.xlsx", data_only=True)
+
+def load_terminology_from_github():
+    """GitHub'daki terminoloji dosyasını yükle (ileride eklenebilir)."""
+    # Repo'da henüz terminoloji CSV/TSV dosyası yok.
+    # Dosya eklendiğinde buraya raw URL gelecek, örneğin:
+    # https://raw.githubusercontent.com/tolgatify/TR48A-DoubleCMD-Style-Guide-Terminology/main/termbase.tsv
+    pass
+
+def load_terminology_from_excel(path="termbase mergan.xlsx"):
+    """Local Excel termbase'den terminoloji yükle."""
+    try:
+        import openpyxl
+        if not os.path.exists(path):
+            print(f"Terminoloji dosyası bulunamadı: {path}")
+            return ""
+        wb = openpyxl.load_workbook(path, data_only=True)
         sheet = wb.active
         lines = []
         for row in sheet.iter_rows(min_row=2, values_only=True):
             en_term = str(row[0]).strip() if row[0] is not None else ""
             tr_term = str(row[1]).strip() if row[1] is not None else ""
-            if en_term and tr_term:
+            if en_term and tr_term and en_term != "None" and tr_term != "None":
                 lines.append(f"{en_term} -> {tr_term}")
         if lines:
-            TERM_TEXT = "\n\n=== DOUBLECMD TERMINOLOGY GLOSSARY ===\n"
-            TERM_TEXT += "Aşağıdaki terimleri her zaman sağ tarafında belirtilen Türkçe karşılıklarıyla çevir:\n\n"
-            TERM_TEXT += "\n".join(lines)
             print(f"BAŞARILI: {len(lines)} terim Excel'den okundu.")
-except Exception as e:
-    print(f"Terminoloji Excel'den okunamadı: {str(e)}")
+            return (
+                "\n\n=== DOUBLECMD TERMINOLOGY GLOSSARY ===\n"
+                "Aşağıdaki terimleri her zaman sağ tarafında belirtilen Türkçe karşılıklarıyla çevir:\n\n"
+                + "\n".join(lines)
+            )
+    except ImportError:
+        print("openpyxl yüklü değil, terminoloji atlanıyor.")
+    except Exception as e:
+        print(f"Terminoloji Excel'den okunamadı: {e}")
+    return ""
 
+TERM_TEXT = load_terminology_from_excel()
 FULL_INSTRUCTION = STYLE_GUIDE + TERM_TEXT
 
-
-def get_model():
-    api_key = os.environ.get("GEMINI_API_KEY")
+# ── Anthropic istemcisi (uygulama başlarken bir kez oluştur) ─────────────────
+def get_client():
+    api_key = os.environ.get("ANTHROPIC_API_KEY")
     if not api_key:
-        raise ValueError("GEMINI_API_KEY eksik")
-    genai.configure(api_key=api_key)
-    return genai.GenerativeModel("gemini-2.0-flash")
+        raise ValueError("ANTHROPIC_API_KEY environment variable eksik")
+    return anthropic.Anthropic(api_key=api_key)
 
+CLIENT = None
 
+def client():
+    global CLIENT
+    if CLIENT is None:
+        CLIENT = get_client()
+    return CLIENT
+
+# ── Çeviri fonksiyonu ─────────────────────────────────────────────────────────
+def translate_text(text: str) -> str:
+    """Tek bir metni Claude Haiku ile çevir."""
+    if not text or not text.strip():
+        return ""
+    message = client().messages.create(
+        model="claude-haiku-4-5-20251001",
+        max_tokens=1024,
+        system=FULL_INSTRUCTION,
+        messages=[
+            {
+                "role": "user",
+                "content": f"Translate the following English text to Turkish:\n\n{text}"
+            }
+        ]
+    )
+    return message.content[0].text.strip()
+
+# ── Endpoints ─────────────────────────────────────────────────────────────────
 @app.route("/translate", methods=["POST"])
 def translate():
     data = request.get_json()
@@ -169,12 +218,10 @@ def translate():
         return jsonify({"translatedText": ""}), 200
 
     try:
-        model = get_model()
-        prompt = f"{FULL_INSTRUCTION}\n\nLütfen aşağıdaki metni kurallara uyarak Türkçeye çevir:\n\n{source_text}"
-        response = model.generate_content(prompt)
-        return jsonify({"translatedText": response.text.strip()})
+        result = translate_text(source_text)
+        return jsonify({"translatedText": result})
     except Exception as e:
-        print(f"Translation Error: {str(e)}")
+        print(f"Translation Error: {e}")
         return jsonify({"error": str(e)}), 500
 
 
@@ -186,18 +233,12 @@ def phrase_mt():
         return jsonify({"translations": []}), 200
 
     try:
-        model = get_model()
         translations = []
         for text in texts:
-            if not text.strip():
-                translations.append("")
-                continue
-            prompt = f"{FULL_INSTRUCTION}\n\nLütfen aşağıdaki metni kurallara uyarak Türkçeye çevir:\n\n{text}"
-            response = model.generate_content(prompt)
-            translations.append(response.text.strip())
+            translations.append(translate_text(text) if text.strip() else "")
         return jsonify({"translations": translations})
     except Exception as e:
-        print(f"Phrase MT Error: {str(e)}")
+        print(f"Phrase MT Error: {e}")
         return jsonify({"error": str(e)}), 500
 
 
@@ -211,7 +252,12 @@ def languages():
 
 @app.route("/", methods=["GET"])
 def health():
-    return jsonify({"status": "ok", "service": "DoubleCMD MT - TR48A"})
+    return jsonify({
+        "status": "ok",
+        "service": "DoubleCMD MT - TR48A",
+        "model": "claude-haiku-4-5-20251001",
+        "terminology_terms": len(TERM_TEXT.split("\n")) if TERM_TEXT else 0
+    })
 
 
 if __name__ == "__main__":
